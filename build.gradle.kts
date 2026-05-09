@@ -30,6 +30,8 @@ dependencies {
     implementation(ktorLibs.server.statusPages)
     implementation(ktorLibs.server.swagger)
     implementation(libs.logback.classic)
+    implementation("org.mindrot:jbcrypt:0.4")
+    implementation("io.ktor:ktor-server-html-builder-jvm")
 
     testImplementation(kotlin("test"))
     testImplementation(ktorLibs.server.testHost)
