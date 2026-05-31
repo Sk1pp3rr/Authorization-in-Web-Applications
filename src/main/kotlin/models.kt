@@ -9,7 +9,7 @@ enum class Role {ADMIN, USER}
 
 // model of user session
 @Serializable
-data class UserSession(val name: String, val role: Role)
+data class UserSession(val name: String, val role: Role, val department: String)
 
 //example of document for ABAC (has an owner)
-data class Document(val id: Int, val content: String, val owner: String)
+data class Document(val id: Int, val content: String, val department: String)

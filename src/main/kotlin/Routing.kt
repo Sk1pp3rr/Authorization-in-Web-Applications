@@ -19,12 +19,12 @@ fun Application.configureRouting() {
                 head { style { +CssAdd.getCss() } }
                 body {
                     div("container") {
-                        h1 { +"Authentication impl" }
+                        h1 { +"Authentication impl (Topic 17)" }
 
                         if (session == null) {
-                            a(href = "/login") { +"1. Login (sets session)" }
+                            a(href = "/login", classes = "btn") { +"1. Login (sets session)" }
                         } else {
-                            p { +"Logged in as: ${session.name} (${session.role})" }
+                            p { +"Logged in as: ${session.name} | Role: ${session.role} | Dept: ${session.department}" }
                             a(href = "/logout") { b { +"Log out" } }
                             br()
                             a(href = "/dashboard") { +"Go to Dashboard" }
@@ -43,11 +43,11 @@ fun Application.configureRouting() {
                         ul {
                             li { a(href = "/admin/system-info") { +"Admin panel (RBAC)" } }
 
-                            // Wyświetlamy tylko to, na co pozwolił DataService
+                            // Show only what DataService allows
                             visibleDocs.forEach { doc ->
                                 li {
                                     a(href = "/document/${doc.id}") {
-                                        +"Document ${doc.id} - ${if (doc.owner == session?.name) "Your Own" else "Owner: ${doc.owner}"}"
+                                        +"Document ${doc.id} - ${if (doc.department == session?.department) "Your Department" else "Dept: ${doc.department}"} (ABAC)"
                                     }
                                 }
                             }
@@ -71,7 +71,7 @@ fun Application.configureRouting() {
                         form(action = "/login", method = FormMethod.post) {
                             p { +"Username: "; textInput(name = "user") }
                             p { +"Password: "; passwordInput(name = "pass") }
-                            submitInput { value = "Login" }
+                            submitInput(classes = "btn") { value = "Login" }
                         }
                     }
                 }
@@ -83,9 +83,10 @@ fun Application.configureRouting() {
             val user = params["user"] ?: ""
             val pass = params["pass"] ?: ""
 
-            val role = DataService.validateUser(user, pass)
-            if (role != null) {
-                call.sessions.set(UserSession(user, role))
+            // validateUser from DataService returns whole session with department logic
+            val sessionRecord = DataService.validateUser(user, pass)
+            if (sessionRecord != null) {
+                call.sessions.set(sessionRecord)
                 call.respondRedirect("/")
             } else {
                 call.respondText("Invalid username or password!", status = HttpStatusCode.Unauthorized)
@@ -110,7 +111,7 @@ fun Application.configureRouting() {
             val doc = DataService.getDocumentIfAllowed(session, docId)
 
             if (doc != null) {
-                call.respondText("Document: ${doc.content} | Owner: ${doc.owner}")
+                call.respondText("Document: ${doc.content} | Department: ${doc.department}")
             } else {
                 call.respond(HttpStatusCode.Forbidden)
             }
@@ -128,6 +129,8 @@ fun Application.configureRouting() {
                             form(action = "/admin/add-user", method = FormMethod.post) {
                                 p { +"New Username: "; textInput(name = "new_user") }
                                 p { +"New Password: "; passwordInput(name = "new_pass") }
+                                // DODANO: Pole na departament
+                                p { +"Department: "; textInput(name = "new_dept") }
                                 p {
                                     +"Role: "
                                     select {
@@ -136,7 +139,7 @@ fun Application.configureRouting() {
                                         option { value = "ADMIN"; +"Admin" }
                                     }
                                 }
-                                submitInput { value = "Create User" }
+                                submitInput(classes = "btn") { value = "Create User" }
                             }
                             br()
                             a(href = "/") { +"Back to Home" }
@@ -154,12 +157,13 @@ fun Application.configureRouting() {
             val params = call.receiveParameters()
             val newUser = params["new_user"] ?: ""
             val newPass = params["new_pass"] ?: ""
+            val newDept = params["new_dept"] ?: "GENERAL" // DODANO: Odbiór departamentu
             val newRole = try { Role.valueOf(params["new_role"] ?: "USER") } catch (e: Exception) { Role.USER }
 
-            val success = DataService.addUser(session, newUser, newPass, newRole)
+            val success = DataService.addUser(session, newUser, newPass, newRole, newDept)
 
             if (success) {
-                call.respondText("User $newUser added successfully with role $newRole!")
+                call.respondText("User $newUser added successfully to $newDept with role $newRole!")
             } else {
                 call.respond(HttpStatusCode.Forbidden)
             }
@@ -172,7 +176,7 @@ fun Application.configureRouting() {
                     head { style { +CssAdd.getCss() } }
                     body {
                         div("container") {
-                            h1 { +"Create New Document" }
+                            h1 { +"Create New Document for ${session.department}" }
                             form(action = "/add-document", method = FormMethod.post) {
                                 div("form-group") {
                                     p { +"Content:" }
@@ -195,7 +199,9 @@ fun Application.configureRouting() {
             val session = call.sessions.get<UserSession>()
             if (session != null) {
                 val content = call.receiveParameters()["content"] ?: ""
-                val success = DataService.addDocument(session.name, content)
+
+                val success = DataService.addDocument(session.department, content)
+
                 if (success) {
                     call.respondRedirect("/")
                 } else {

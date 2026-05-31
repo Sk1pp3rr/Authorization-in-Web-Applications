@@ -2,55 +2,56 @@ package com.example
 
 import org.mindrot.jbcrypt.BCrypt
 
+data class UserRecord(val passHash: String, val role: Role, val department: String)
+
 object DataService {
     private val userDB = mutableMapOf(
-        "admin" to Pair(BCrypt.hashpw("p4ss123", BCrypt.gensalt()), Role.ADMIN),
-        "chillGuy" to Pair(BCrypt.hashpw("chill123", BCrypt.gensalt()), Role.USER)
+        "admin" to UserRecord(BCrypt.hashpw("p4ss123", BCrypt.gensalt()), Role.ADMIN, "IT_SECURITY"),
+        "chillGuy" to UserRecord(BCrypt.hashpw("chill123", BCrypt.gensalt()), Role.USER, "HR")
     )
 
     private val documents = mutableListOf(
-        Document(1, "Secret crazy Administrator data or whatever", "admin"),
-        Document(2, "Chill Guy's music sheets", "chillGuy")
+        Document(1, "Secret crazy Administrator data or whatever", "IT_SECURITY"),
+        Document(2, "Chill Guy's music sheets", "HR")
     )
 
-    // Abstract for users
+    // User logic
 
-    fun validateUser(username: String, password: String): Role? {
-        val entry = userDB[username]
-        return if (entry != null && BCrypt.checkpw(password, entry.first)) entry.second else null
+    fun validateUser(username: String, password: String): UserSession? {
+        val record = userDB[username]
+        return if (record != null && BCrypt.checkpw(password, record.passHash)) {
+            UserSession(username, record.role, record.department)
+        } else null
     }
 
-    fun addUser(adminSession: UserSession?, newUser: String, newPass: String, newRole: Role): Boolean {
-        // Additional security
+    fun addUser(adminSession: UserSession?, newUser: String, newPass: String, newRole: Role, newDept: String): Boolean {
         if (adminSession?.role != Role.ADMIN) return false
         if (userDB.containsKey(newUser)) return false
 
-        userDB[newUser] = Pair(BCrypt.hashpw(newPass, BCrypt.gensalt()), newRole)
+        userDB[newUser] = UserRecord(BCrypt.hashpw(newPass, BCrypt.gensalt()), newRole, newDept)
         return true
     }
 
-    // Abstract for documents
+    // DOC logic (STRICT ABAC)
 
     fun getVisibleDocuments(session: UserSession?): List<Document> {
         if (session == null) return emptyList()
-        // ABAC
-        return if (session.role == Role.ADMIN) {
-            documents.toList()
-        } else {
-            documents.filter { it.owner == session.name }
-        }
+        // WSZYSCY (nawet Admin) widzą tylko dokumenty ze swojego departamentu
+        return documents.filter { it.department == session.department }
     }
 
     fun getDocumentIfAllowed(session: UserSession?, id: Int?): Document? {
         if (session == null || id == null) return null
         val doc = documents.find { it.id == id } ?: return null
-        return if (session.role == Role.ADMIN || doc.owner == session.name) doc else null
+
+        // Access is verified only through the department attribute
+        return if (doc.department == session.department) doc else null
     }
 
-    fun addDocument(session: String, content: String): Boolean {
-        if (session == null || content.isEmpty()) return false
+    fun addDocument(department: String, content: String): Boolean {
+        if (department.isEmpty() || content.isEmpty()) return false
         val newId = (documents.maxOfOrNull { it.id } ?: 0) + 1
-        documents.add(Document(newId, content, session))
+        documents.add(Document(newId, content, department))
         return true
     }
 }
