@@ -1,4 +1,3 @@
-
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(ktorLibs.plugins.ktor)
@@ -15,6 +14,7 @@ application {
 kotlin {
     jvmToolchain(21)
 }
+
 dependencies {
     implementation(ktorLibs.serialization.kotlinx.json)
     implementation(ktorLibs.server.auth)
@@ -32,6 +32,11 @@ dependencies {
     implementation(libs.logback.classic)
     implementation("org.mindrot:jbcrypt:0.4")
     implementation("io.ktor:ktor-server-html-builder-jvm")
+
+    // Zależności dla klienta HTTP (wymagane przy OAuth do pobrania danych profilu)
+    implementation("io.ktor:ktor-client-core")
+    implementation("io.ktor:ktor-client-cio")
+    implementation("io.ktor:ktor-client-content-negotiation")
 
     testImplementation(kotlin("test"))
     testImplementation(ktorLibs.server.testHost)

@@ -13,3 +13,11 @@ data class UserSession(val name: String, val role: Role)
 
 //example of document for ABAC (has an owner)
 data class Document(val id: Int, val content: String, val owner: String)
+
+// model dla danych profilowych z Google
+@Serializable
+data class GoogleUserInfo(
+    val id: String,
+    val name: String,
+    val picture: String? = null
+)

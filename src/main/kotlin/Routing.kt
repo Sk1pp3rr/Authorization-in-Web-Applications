@@ -1,11 +1,15 @@
 package com.example
 
+import io.ktor.client.call.*
+import io.ktor.client.request.*
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
-import io.ktor.server.html.respondHtml
-import io.ktor.server.request.receiveParameters
+import io.ktor.server.auth.*
+import io.ktor.server.html.*
+import io.ktor.server.request.*
 import io.ktor.server.response.*
-import io.ktor.server.routing.*
+import io.ktor.server.routing.* // KLUCZOWY IMPORT: to on sprawia, że 'get' i 'post' działają jako routing!
 import io.ktor.server.sessions.*
 import kotlinx.html.*
 
@@ -43,7 +47,6 @@ fun Application.configureRouting() {
                         ul {
                             li { a(href = "/admin/system-info") { +"Admin panel (RBAC)" } }
 
-                            // Wyświetlamy tylko to, na co pozwolił DataService
                             visibleDocs.forEach { doc ->
                                 li {
                                     a(href = "/document/${doc.id}") {
@@ -71,7 +74,13 @@ fun Application.configureRouting() {
                         form(action = "/login", method = FormMethod.post) {
                             p { +"Username: "; textInput(name = "user") }
                             p { +"Password: "; passwordInput(name = "pass") }
-                            submitInput { value = "Login" }
+                            submitInput(classes = "btn") { value = "Login" }
+                        }
+                        hr()
+                        // Przycisk logowania przez Google
+                        a(href = "/login-google", classes = "btn") {
+                            style = "background: #dd4b39;" // Kolor Google
+                            +"Sign in with Google"
                         }
                     }
                 }
@@ -91,6 +100,36 @@ fun Application.configureRouting() {
                 call.respondText("Invalid username or password!", status = HttpStatusCode.Unauthorized)
             }
         }
+
+        // --- BLOK OAUTH 2.0 ---
+        authenticate("auth-oauth-google") {
+            get("/login-google") {
+                // To przekieruje do Google automatycznie, o ile skonfigurowałeś Security.kt
+            }
+
+            get("/callback") {
+                val principal: OAuthAccessTokenResponse.OAuth2? = call.principal()
+
+                if (principal != null) {
+                    // Wywołanie HTTP Clienta (zwróć uwagę na explicitly użyte applicationHttpClient)
+                    val userInfo: GoogleUserInfo = applicationHttpClient.get("https://www.googleapis.com/oauth2/v2/userinfo") {
+                        headers { append(HttpHeaders.Authorization, "Bearer ${principal.accessToken}") }
+                    }.body()
+
+                    // Pobieramy rolę lub rejestrujemy użytkownika "w locie"
+                    val role = DataService.authenticateGoogleUser(userInfo.id, userInfo.name)
+
+                    // Ustawienie sesji
+                    val sessionName = "google_${userInfo.id}"
+                    call.sessions.set(UserSession(sessionName, role))
+
+                    call.respondRedirect("/")
+                } else {
+                    call.respondRedirect("/login")
+                }
+            }
+        }
+        // --- KONIEC BLOKU OAUTH ---
 
         // RBAC
         get("/admin/system-info") {
@@ -116,7 +155,6 @@ fun Application.configureRouting() {
             }
         }
 
-        // Form for admin GET
         get("/admin/add-user") {
             val session = call.sessions.get<UserSession>()
             if (session?.role == Role.ADMIN) {
@@ -136,7 +174,7 @@ fun Application.configureRouting() {
                                         option { value = "ADMIN"; +"Admin" }
                                     }
                                 }
-                                submitInput { value = "Create User" }
+                                submitInput(classes = "btn") { value = "Create User" }
                             }
                             br()
                             a(href = "/") { +"Back to Home" }
@@ -148,7 +186,6 @@ fun Application.configureRouting() {
             }
         }
 
-        // User addition POST
         post("/admin/add-user") {
             val session = call.sessions.get<UserSession>()
             val params = call.receiveParameters()
@@ -190,7 +227,6 @@ fun Application.configureRouting() {
             }
         }
 
-        // Document add POST
         post("/add-document") {
             val session = call.sessions.get<UserSession>()
             if (session != null) {

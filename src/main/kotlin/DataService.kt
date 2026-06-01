@@ -29,6 +29,24 @@ object DataService {
         return true
     }
 
+    fun authenticateGoogleUser(googleId: String, name: String): Role {
+        // Tworzymy unikalny identyfikator na podstawie ID z Google
+        val internalUsername = "google_$googleId"
+
+        // Jeśli użytkownik z Google nie istnieje, rejestrujemy go automatycznie z rolą USER
+        if (!userDB.containsKey(internalUsername)) {
+            // Hasło nie jest używane do logowania OAuth, ale zapisujemy cokolwiek (hash)
+            val dummyHash = BCrypt.hashpw("oauth_dummy", BCrypt.gensalt())
+            userDB[internalUsername] = Pair(dummyHash, Role.USER)
+
+            // Bonus: dodajemy automatyczny dokument powitalny (ABAC zadziała od razu)
+            val newId = (documents.maxOfOrNull { it.id } ?: 0) + 1
+            documents.add(Document(newId, "Welcome $name! This document is yours.", internalUsername))
+        }
+
+        return userDB[internalUsername]!!.second
+    }
+
     // Abstract for documents
 
     fun getVisibleDocuments(session: UserSession?): List<Document> {
@@ -48,7 +66,7 @@ object DataService {
     }
 
     fun addDocument(session: String, content: String): Boolean {
-        if (session == null || content.isEmpty()) return false
+        if (session.isEmpty() || content.isEmpty()) return false
         val newId = (documents.maxOfOrNull { it.id } ?: 0) + 1
         documents.add(Document(newId, content, session))
         return true
