@@ -4,71 +4,110 @@ import org.mindrot.jbcrypt.BCrypt
 
 object DataService {
     private val userDB = mutableMapOf(
-        "admin" to Pair(BCrypt.hashpw("p4ss123", BCrypt.gensalt()), Role.ADMIN),
-        "chillGuy" to Pair(BCrypt.hashpw("chill123", BCrypt.gensalt()), Role.USER)
+        "admin" to UserRecord(BCrypt.hashpw("p4ss123", BCrypt.gensalt()), Role.ADMIN, "IT"),
+        "chillGuy" to UserRecord(BCrypt.hashpw("chill123", BCrypt.gensalt()), Role.USER, "HR")
     )
 
     private val documents = mutableListOf(
-        Document(1, "Secret crazy Administrator data or whatever", "admin"),
-        Document(2, "Chill Guy's music sheets", "chillGuy")
+        Document(1, "Tajne plany wdrożenia infrastruktury Ktor", "IT"),
+        Document(2, "Procedury rekrutacyjne i wnioski urlopowe", "HR")
     )
 
-    // Abstract for users
+    // --- USERS ---
 
-    fun validateUser(username: String, password: String): Role? {
-        val entry = userDB[username]
-        return if (entry != null && BCrypt.checkpw(password, entry.first)) entry.second else null
+    fun validateUser(username: String, password: String): UserSession? {
+        val user = userDB[username]
+        if (user != null && BCrypt.checkpw(password, user.passwordHash)) {
+            return UserSession(username, username, user.role, user.department)
+        }
+        return null
     }
 
-    fun addUser(adminSession: UserSession?, newUser: String, newPass: String, newRole: Role): Boolean {
-        // Additional security
-        if (adminSession?.role != Role.ADMIN) return false
-        if (userDB.containsKey(newUser)) return false
+    // Step-up Authentication: Sprawdzamy hasło admina przed wykonaniem groźnej akcji
+    fun verifyAdminPassword(adminUsername: String, passwordInput: String): Boolean {
+        val user = userDB[adminUsername] ?: return false
+        if (user.role != Role.ADMIN) return false
+        return BCrypt.checkpw(passwordInput, user.passwordHash)
+    }
 
-        userDB[newUser] = Pair(BCrypt.hashpw(newPass, BCrypt.gensalt()), newRole)
+    fun getAllUsers(): Map<String, UserRecord> {
+        return userDB.toMap()
+    }
+
+    fun modifyUser(targetUser: String, newRole: Role, newDepartment: String?, newUsername: String? = null): Boolean {
+        val user = userDB[targetUser] ?: return false
+        user.role = newRole
+        user.department = newDepartment.takeIf { it?.isNotBlank() == true }
+
+        if (!newUsername.isNullOrBlank() && newUsername != targetUser && !userDB.containsKey(newUsername)) {
+            userDB[newUsername] = user
+            userDB.remove(targetUser)
+        }
+
         return true
     }
 
-    fun authenticateGoogleUser(googleId: String, name: String): Role {
-        // Tworzymy unikalny identyfikator na podstawie ID z Google
-        val internalUsername = "google_$googleId"
+    // --- OAUTH 2.0 ---
 
-        // Jeśli użytkownik z Google nie istnieje, rejestrujemy go automatycznie z rolą USER
-        if (!userDB.containsKey(internalUsername)) {
-            // Hasło nie jest używane do logowania OAuth, ale zapisujemy cokolwiek (hash)
-            val dummyHash = BCrypt.hashpw("oauth_dummy", BCrypt.gensalt())
-            userDB[internalUsername] = Pair(dummyHash, Role.USER)
+    fun authenticateGoogleUser(googleId: String, realName: String): UserSession {
+        val existingUser = userDB.entries.find { it.value.googleId == googleId }
 
-            // Bonus: dodajemy automatyczny dokument powitalny (ABAC zadziała od razu)
-            val newId = (documents.maxOfOrNull { it.id } ?: 0) + 1
-            documents.add(Document(newId, "Welcome $name! This document is yours.", internalUsername))
+        val usernameToUse: String
+        val roleToUse: Role
+        val deptToUse: String?
+
+        if (existingUser == null) {
+            // Registration temporary googleID as username
+            usernameToUse = "google_${googleId.take(6)}..."
+            val dummyHash = BCrypt.hashpw("oauth_dummy_${System.currentTimeMillis()}", BCrypt.gensalt())
+
+            // googleID for the record
+            userDB[usernameToUse] = UserRecord(dummyHash, Role.PENDING, null, googleId)
+
+            roleToUse = Role.PENDING
+            deptToUse = null
+        } else {
+            //log changed by ADMIN
+            usernameToUse = existingUser.key
+            roleToUse = existingUser.value.role
+            deptToUse = existingUser.value.department
         }
 
-        return userDB[internalUsername]!!.second
+        return UserSession(usernameToUse, realName, roleToUse, deptToUse)
     }
 
-    // Abstract for documents
+    // --- DOCS (ABAC) ---
 
     fun getVisibleDocuments(session: UserSession?): List<Document> {
-        if (session == null) return emptyList()
-        // ABAC
-        return if (session.role == Role.ADMIN) {
-            documents.toList()
-        } else {
-            documents.filter { it.owner == session.name }
-        }
+        if (session == null || session.role == Role.PENDING) return emptyList()
+        return documents.filter { it.department == session.department }
     }
 
     fun getDocumentIfAllowed(session: UserSession?, id: Int?): Document? {
-        if (session == null || id == null) return null
+        if (session == null || id == null || session.role == Role.PENDING) return null
         val doc = documents.find { it.id == id } ?: return null
-        return if (session.role == Role.ADMIN || doc.owner == session.name) doc else null
+        // ABAC
+        return if ( doc.department == session.department) doc else null
     }
 
-    fun addDocument(session: String, content: String): Boolean {
-        if (session.isEmpty() || content.isEmpty()) return false
+    fun addDocument(session: UserSession, content: String): Boolean {
+        if (content.isEmpty() || session.department == null) return false
         val newId = (documents.maxOfOrNull { it.id } ?: 0) + 1
-        documents.add(Document(newId, content, session))
+        // Document has the department attribute from its owner
+        documents.add(Document(newId, content, session.department))
         return true
+    }
+
+    // --- SEARCH AND FILTER ---
+
+    // Only user with exact username
+    fun searchUsers(query: String): Map<String, UserRecord> {
+        if (query.isBlank()) return emptyMap()
+        return userDB.filter { it.key.contains(query, ignoreCase = true) }
+    }
+
+    // User with PENDING role
+    fun getPendingUsers(): Map<String, UserRecord> {
+        return userDB.filter { it.value.role == Role.PENDING }
     }
 }

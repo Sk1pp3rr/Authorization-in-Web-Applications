@@ -1,23 +1,31 @@
 package com.example
 
-import io.ktor.server.auth.*
 import kotlinx.serialization.Serializable
 
-///For simplicity, we will use simulation of the real db
 @Serializable
-enum class Role {ADMIN, USER}
+enum class Role { ADMIN, USER, PENDING } // Dodana rola PENDING dla nowych kont OAuth
 
-// model of user session
 @Serializable
-data class UserSession(val name: String, val role: Role)
+data class UserSession(
+    val username: String,
+    val name: String,
+    val role: Role,
+    val department: String?
+)
+// ABAC: Department is what determine document access
+data class Document(val id: Int, val content: String, val department: String)
 
-//example of document for ABAC (has an owner)
-data class Document(val id: Int, val content: String, val owner: String)
-
-// model dla danych profilowych z Google
 @Serializable
 data class GoogleUserInfo(
     val id: String,
     val name: String,
     val picture: String? = null
+)
+
+// User Model
+data class UserRecord(
+    val passwordHash: String,
+    var role: Role,
+    var department: String?,
+    val googleId: String? = null
 )
