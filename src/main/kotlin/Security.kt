@@ -28,15 +28,15 @@ fun Application.configureSecurity() {
     install(Authentication) {
         oauth("auth-oauth-google") {
             // Ścieżka zwrotna (Callback), do której Google przekieruje usera po logowaniu
-            urlProvider = { "http://localhost:8080/callback" }
+            urlProvider = { EnvConfig.googleCallbackUrl }
             providerLookup = {
                 OAuthServerSettings.OAuth2ServerSettings(
                     name = "google",
                     authorizeUrl = "https://accounts.google.com/o/oauth2/auth",
                     accessTokenUrl = "https://accounts.google.com/o/oauth2/token",
                     requestMethod = HttpMethod.Post,
-                    clientId = "197335707112-31fpin0odt1e56f71e5vtahgua98u5lt.apps.googleusercontent.com",
-                    clientSecret = "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",
+                    clientId = EnvConfig.googleClientId,
+                    clientSecret = EnvConfig.googleClientSecret,
                     defaultScopes = listOf(
                         "https://www.googleapis.com/auth/userinfo.profile",
                         "https://www.googleapis.com/auth/userinfo.email"

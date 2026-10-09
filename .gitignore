@@ -18,8 +18,11 @@
 *.zip
 *.tar.gz
 *.rar
-
+# Environment & Secret files
 .env
+.env.*
+.env.local
+!.env.example
 *.jks
 *.p12
 *.key

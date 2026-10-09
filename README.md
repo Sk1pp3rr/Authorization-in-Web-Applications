@@ -39,7 +39,13 @@ In accordance with the project requirements, two distinct methods of access cont
 
 ### Deployment Instructions
 To build and run the application for evaluation:
-1. Build the project using the Gradle wrapper: ./gradlew build
-2. Start the server: ./gradlew run
-3. The server will be accessible at http://localhost:8080.
-4. Interactive API documentation and testing are available via Swagger UI at http://localhost:8080/swagger.
+1. Configure environment variables:
+   Copy `.env.example` to `.env` and fill in your Google OAuth credentials if needed:
+   ```bash
+   cp .env.example .env
+   ```
+2. Build the project using the Gradle wrapper: `./gradlew build`
+3. Start the server: `./gradlew run`
+4. The server will be accessible at http://localhost:8080.
+5. Interactive API documentation and testing are available via Swagger UI at http://localhost:8080/swagger.
+
